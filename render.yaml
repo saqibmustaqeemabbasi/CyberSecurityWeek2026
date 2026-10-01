@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: slide-studio-live
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: STUDIO_PASSWORD
+        sync: false

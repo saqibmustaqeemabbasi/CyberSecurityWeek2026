@@ -1,0 +1,34 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="color-scheme" content="light dark"><title>Join</title>
+<style>
+:root{--bg:#eef3fa;--cd:#fff;--tx:#12233f;--mu:#63738d;--ac:#2f7dff;--ln:#d7e0ee;--ok:#16a34a;--no:#dc2626}@media(prefers-color-scheme:dark){:root{--bg:#0f1a2e;--cd:#16233d;--tx:#e8eefb;--mu:#93a6c6;--ln:#2a3c5e}}
+*{box-sizing:border-box}body{margin:0;font:16px system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--tx);min-height:100vh;padding:env(safe-area-inset-top) 16px env(safe-area-inset-bottom)}
+main{max-width:520px;margin:0 auto;padding:22px 0}h1{font-size:22px;margin:0 0 4px}p{color:var(--mu);margin:.3em 0 1em}
+.card{background:var(--cd);border:1px solid var(--ln);border-radius:16px;padding:18px;box-shadow:0 6px 24px #0001}
+input{width:100%;font:inherit;padding:14px;border-radius:12px;border:1px solid var(--ln);background:var(--bg);color:var(--tx);margin:6px 0 12px;text-transform:none}#code{letter-spacing:.3em;text-transform:uppercase;text-align:center;font-weight:700;font-size:22px}
+button.b{width:100%;font:inherit;font-weight:600;padding:14px;border-radius:12px;border:0;background:var(--ac);color:#fff;cursor:pointer}
+.opt{display:flex;gap:12px;align-items:center;width:100%;text-align:left;font:inherit;padding:16px;margin:10px 0;border-radius:14px;border:2px solid var(--ln);background:var(--cd);color:var(--tx);cursor:pointer}.opt b{width:32px;height:32px;border-radius:50%;background:var(--ac);color:#fff;display:grid;place-items:center;flex:none}
+.opt:active{transform:scale(.98)}.opt.sel{border-color:var(--ac)}.opt.ok{border-color:var(--ok);background:#16a34a22}.opt.no{opacity:.55}
+.bar{height:8px;border-radius:6px;background:var(--ln);overflow:hidden;margin:6px 0 14px}.bar i{display:block;height:100%;background:var(--ac);width:100%;transition:width 1s linear}
+.big{font-size:44px;text-align:center;margin:8px 0}.mu{color:var(--mu);text-align:center}.top{display:flex;justify-content:space-between;color:var(--mu);font-size:13px;margin-bottom:10px}.err{color:var(--no);margin:8px 0}
+</style></head><body><main><div id="v"></div></main>
+<script>
+const $=id=>document.getElementById(id),V=$('v'),LS=k=>{try{return localStorage.getItem(k)}catch(e){return null}},SS=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
+let ws,room=((location.pathname.match(/\/j\/([A-Za-z0-9]+)/)||[])[1]||new URLSearchParams(location.search).get('c')||'').toUpperCase(),name=LS('ss_name')||'',pid=LS('ss_pid')||'',q=null,timer=null,retry=0,st={score:0},voted=null;
+const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function form(err){V.innerHTML='<h1>Join the session</h1><p>Enter the room code shown on the presenter\'s screen.</p><div class="card"><label>Room code</label><input id="code" maxlength="8" autocomplete="off" value="'+esc(room)+'" placeholder="ABC123"><label>Your name</label><input id="nm" maxlength="24" autocomplete="nickname" value="'+esc(name)+'" placeholder="e.g. Ayesha">'+(err?'<div class="err">'+esc(err)+'</div>':'')+'<button class="b" id="go">Join</button></div>';$('go').onclick=()=>{room=$('code').value.trim().toUpperCase();name=$('nm').value.trim();if(!room||!name)return form('Please enter both a code and your name.');SS('ss_name',name);connect()};}
+function wait(msg){V.innerHTML='<div class="top"><span>'+esc(name)+'</span><span>Room '+room+' · '+st.score+' pts</span></div><div class="card"><div class="big">⏳</div><div class="mu">'+(msg||'Waiting for the next question…')+'</div></div>'}
+function connect(){clearTimeout(timer);ws=new WebSocket((location.protocol=='https:'?'wss://':'ws://')+location.host+'/ws');
+ ws.onopen=()=>{retry=0;ws.send(JSON.stringify({t:'hello',role:'aud',room,name,pid}))};
+ ws.onmessage=e=>{const d=JSON.parse(e.data);
+  if(d.t=='hi'){pid=d.pid;SS('ss_pid',pid);st.score=d.score||0;if(!q)wait()}
+  else if(d.t=='err'){form(d.msg);ws.onclose=null;ws.close()}
+  else if(d.t=='open'){q=d;voted=d.voted;ask(d.left)}
+  else if(d.t=='ack'){voted=d.choice;ask()}
+  else if(d.t=='result'){clearInterval(timer);st.score=d.score;res(d);q=null}};
+ ws.onclose=()=>{if(V.querySelector('#go'))return;wait('Reconnecting…');retry++;timer=setTimeout(connect,Math.min(5000,500*retry))}}
+function ask(left){clearInterval(timer);const end=left!=null?Date.now()+left*1000:ask.end;ask.end=end;
+ const draw=()=>{const s=Math.max(0,Math.round((ask.end-Date.now())/1000));V.innerHTML='<div class="top"><span>'+esc(name)+'</span><span>'+s+'s</span></div><div class="bar"><i style="width:'+Math.min(100,s/q.tm*100)+'%"></i></div><h1>'+esc(q.q)+'</h1>'+q.o.map((o,i)=>'<button class="opt'+(voted===i?' sel':'')+'" data-i="'+i+'" '+(voted!=null?'disabled':'')+'><b>'+String.fromCharCode(65+i)+'</b><span>'+esc(o)+'</span></button>').join('')+(voted!=null?'<p class="mu">Answer locked ✓ — waiting for results</p>':'');
+  V.querySelectorAll('.opt').forEach(b=>b.onclick=()=>{if(voted!=null)return;ws.send(JSON.stringify({t:'vote',id:q.id,choice:+b.dataset.i}))})};draw();timer=setInterval(draw,1000)}
+function res(d){const quiz=d.kind=='quiz';V.innerHTML='<div class="top"><span>'+esc(name)+'</span><span>'+d.score+' pts</span></div><div class="card"><div class="big">'+(!quiz?'🙏':d.choice==null?'⏰':d.correct?'✅':'❌')+'</div><h1 style="text-align:center">'+(!quiz?'Thanks for voting!':d.choice==null?'Too late!':d.correct?'Correct! +'+d.points:'Not this time')+'</h1>'+(quiz&&d.rank?'<p class="mu">Rank '+d.rank+' of '+d.total+'</p>':'')+'</div><p class="mu">Results are on the presenter\'s screen.</p>';setTimeout(()=>{if(!q)wait()},6000)}
+if(room&&name)connect();else form();
+</script></body></html>
